@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/CampusOps.Api/CampusOps.Api.csproj" />
+    <Project Path="src/CampusOps.Contracts/CampusOps.Contracts.csproj" />
+    <Project Path="src/CampusOps.Core/CampusOps.Core.csproj" />
+    <Project Path="src/CampusOps.Infrastructure/CampusOps.Infrastructure.csproj" />
+    <Project Path="src/CampusOps.Worker/CampusOps.Worker.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/CampusOps.Api.Tests/CampusOps.Api.Tests.csproj" />
+    <Project Path="tests/CampusOps.Core.Tests/CampusOps.Core.Tests.csproj" />
+    <Project Path="tests/CampusOps.Infrastructure.Tests/CampusOps.Infrastructure.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,35 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - run: dotnet restore CampusOps.slnx --locked-mode
+      - run: dotnet format CampusOps.slnx --verify-no-changes --no-restore
+      - run: dotnet build CampusOps.slnx --configuration Release --no-restore
+      - run: dotnet test CampusOps.slnx --configuration Release --no-build
+      - run: dotnet list CampusOps.slnx package --vulnerable --include-transitive
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web/CampusOps.Web
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/CampusOps.Web/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npm audit --audit-level=high

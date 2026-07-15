@@ -1,0 +1,13 @@
+root = true
+
+[*.cs]
+indent_style = space
+indent_size = 4
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = false
+csharp_style_namespace_declarations = file_scoped:warning
+
+[*.{json,md,yml,yaml,ts,tsx,css}]
+indent_style = space
+indent_size = 2
+insert_final_newline = true
