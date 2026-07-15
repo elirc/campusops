@@ -1,7 +1,13 @@
+using CampusOps.Core.Common;
+using CampusOps.Core.PreventiveMaintenance;
+using CampusOps.Core.Requests;
+using CampusOps.Infrastructure.PreventiveMaintenance;
+using CampusOps.Infrastructure.Requests;
 using CampusOps.Worker;
-
 var builder = Host.CreateApplicationBuilder(args);
-builder.Services.AddHostedService<Worker>();
-
-var host = builder.Build();
-host.Run();
+builder.Services.AddSingleton<IClock, SystemClock>();
+builder.Services.AddSingleton<IMaintenancePlanStore, InMemoryMaintenancePlanStore>();
+builder.Services.AddSingleton<IMaintenanceRequestStore, InMemoryMaintenanceRequestStore>();
+builder.Services.AddSingleton<PreventiveMaintenanceService>();
+builder.Services.AddHostedService<PreventiveMaintenanceWorker>();
+await builder.Build().RunAsync();
