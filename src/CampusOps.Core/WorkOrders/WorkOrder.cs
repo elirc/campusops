@@ -16,9 +16,10 @@ public sealed class WorkOrder
     public string Title { get; }
     public DateTimeOffset OpenedAt { get; }
     public WorkOrderStatus Status { get; private set; } = WorkOrderStatus.Open;
+    public Guid? TechnicianId { get; private set; }
     public DateTimeOffset? CompletedAt { get; private set; }
     public string? BlockedReason { get; private set; }
-    public void MarkAssigned() { Require(WorkOrderStatus.Open); Status = WorkOrderStatus.Assigned; }
+    public void Assign(Guid technicianId) { Require(WorkOrderStatus.Open); if (technicianId == Guid.Empty) throw new DomainException("work_order.technician_required", "Technician is required."); TechnicianId = technicianId; Status = WorkOrderStatus.Assigned; }
     public void Start() { if (Status is not (WorkOrderStatus.Assigned or WorkOrderStatus.Blocked)) throw Invalid(); Status = WorkOrderStatus.InProgress; BlockedReason = null; }
     public void Block(string reason) { Require(WorkOrderStatus.InProgress); if (string.IsNullOrWhiteSpace(reason)) throw new DomainException("work_order.block_reason_required", "Blocked reason is required."); BlockedReason = reason.Trim(); Status = WorkOrderStatus.Blocked; }
     public void Complete(DateTimeOffset at) { Require(WorkOrderStatus.InProgress); Status = WorkOrderStatus.Completed; CompletedAt = at.ToUniversalTime(); }
@@ -31,5 +32,5 @@ public sealed class WorkOrderService(IWorkOrderStore orders, IMaintenanceRequest
 {
     public async Task<WorkOrder> ConvertAsync(Guid requestId, CancellationToken token) { var request = await requests.GetAsync(requestId, token) ?? throw new DomainException("request.not_found", "Request was not found."); request.MarkConverted(); var order = new WorkOrder(Guid.NewGuid(), request.Id, request.LocationId, request.AssetId, request.Priority, request.Summary, DateTimeOffset.UtcNow); await orders.AddAsync(order, token); return order; }
     public Task<IReadOnlyCollection<WorkOrder>> ListAsync(CancellationToken token) => orders.ListAsync(token);
-    public async Task<WorkOrder> ActAsync(Guid id, string action, string? reason, CancellationToken token) { var order = await orders.GetAsync(id, token) ?? throw new DomainException("work_order.not_found", "Work order was not found."); if (action == "assign") order.MarkAssigned(); else if (action == "start") order.Start(); else if (action == "block") order.Block(reason ?? ""); else if (action == "complete") order.Complete(DateTimeOffset.UtcNow); else if (action == "cancel") order.Cancel(); else throw new DomainException("work_order.action_invalid", "Unknown action."); return order; }
+    public async Task<WorkOrder> ActAsync(Guid id, string action, string? reason, CancellationToken token) { var order = await orders.GetAsync(id, token) ?? throw new DomainException("work_order.not_found", "Work order was not found."); if (action == "start") order.Start(); else if (action == "block") order.Block(reason ?? ""); else if (action == "complete") order.Complete(DateTimeOffset.UtcNow); else if (action == "cancel") order.Cancel(); else throw new DomainException("work_order.action_invalid", "Unknown action."); return order; }
 }
