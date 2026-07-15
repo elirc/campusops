@@ -1,0 +1,4 @@
+CREATE TABLE Locations (Id TEXT NOT NULL PRIMARY KEY, Campus TEXT NOT NULL, Building TEXT NOT NULL, Room TEXT NOT NULL);
+CREATE UNIQUE INDEX IX_Locations_Address ON Locations (Campus, Building, Room);
+CREATE TABLE Assets (Id TEXT NOT NULL PRIMARY KEY, AssetTag TEXT NOT NULL, Name TEXT NOT NULL, Category TEXT NOT NULL, LocationId TEXT NOT NULL REFERENCES Locations(Id), Status TEXT NOT NULL);
+CREATE UNIQUE INDEX IX_Assets_AssetTag ON Assets (AssetTag);

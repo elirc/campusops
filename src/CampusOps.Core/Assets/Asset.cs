@@ -7,19 +7,19 @@ public enum AssetStatus { Active, OutOfService, Retired }
 
 public sealed class Asset
 {
-    public Asset(Guid id, string assetTag, string name, string category, Guid locationId)
+    public Asset(Guid id, string assetTag, string name, string category, Guid locationId, AssetStatus status = AssetStatus.Active)
     {
         if (id == Guid.Empty || locationId == Guid.Empty) throw new DomainException("asset.identity_required", "Asset and location IDs are required.");
         if (string.IsNullOrWhiteSpace(assetTag) || string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(category))
             throw new DomainException("asset.details_required", "Asset tag, name, and category are required.");
-        Id = id; AssetTag = assetTag.Trim().ToUpperInvariant(); Name = name.Trim(); Category = category.Trim(); LocationId = locationId;
+        Id = id; AssetTag = assetTag.Trim().ToUpperInvariant(); Name = name.Trim(); Category = category.Trim(); LocationId = locationId; Status = status;
     }
     public Guid Id { get; }
     public string AssetTag { get; }
     public string Name { get; private set; }
     public string Category { get; private set; }
     public Guid LocationId { get; private set; }
-    public AssetStatus Status { get; private set; } = AssetStatus.Active;
+    public AssetStatus Status { get; private set; }
     public void MoveTo(Guid locationId) { if (Status == AssetStatus.Retired) throw new DomainException("asset.retired", "Retired assets cannot move."); LocationId = locationId; }
     public void MarkOutOfService() { if (Status != AssetStatus.Active) throw new DomainException("asset.not_active", "Only active assets can leave service."); Status = AssetStatus.OutOfService; }
     public void ReturnToService() { if (Status != AssetStatus.OutOfService) throw new DomainException("asset.not_out_of_service", "Asset is not out of service."); Status = AssetStatus.Active; }
