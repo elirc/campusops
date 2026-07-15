@@ -16,9 +16,10 @@ public sealed class WorkOrder
     public string Title { get; }
     public DateTimeOffset OpenedAt { get; }
     public WorkOrderStatus Status { get; private set; } = WorkOrderStatus.Open;
+    public Guid? TechnicianId { get; private set; }
     public DateTimeOffset? CompletedAt { get; private set; }
     public string? BlockedReason { get; private set; }
-    public void MarkAssigned() { Require(WorkOrderStatus.Open); Status = WorkOrderStatus.Assigned; }
+    public void Assign(Guid technicianId) { Require(WorkOrderStatus.Open); if (technicianId == Guid.Empty) throw new DomainException("work_order.technician_required", "Technician is required."); TechnicianId = technicianId; Status = WorkOrderStatus.Assigned; }
     public void Start() { if (Status is not (WorkOrderStatus.Assigned or WorkOrderStatus.Blocked)) throw Invalid(); Status = WorkOrderStatus.InProgress; BlockedReason = null; }
     public void Block(string reason) { Require(WorkOrderStatus.InProgress); if (string.IsNullOrWhiteSpace(reason)) throw new DomainException("work_order.block_reason_required", "Blocked reason is required."); BlockedReason = reason.Trim(); Status = WorkOrderStatus.Blocked; }
     public void Complete(DateTimeOffset at) { Require(WorkOrderStatus.InProgress); Status = WorkOrderStatus.Completed; CompletedAt = at.ToUniversalTime(); }
