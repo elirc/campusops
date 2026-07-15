@@ -9,11 +9,11 @@ public static class WorkOrderEndpoints
     {
         var group = endpoints.MapGroup("/api/v1/work-orders").WithTags("Work orders").RequireAuthorization(SecurityPolicies.Operations);
         group.MapPost("/from-request/{requestId:guid}", async (Guid requestId, WorkOrderService service, CancellationToken token) => { var order = await service.ConvertAsync(requestId, token); return Results.Created($"/api/v1/work-orders/{order.Id}", Map(order)); });
-        group.MapPost("/{id:guid}/{action}", async (Guid id, string action, WorkOrderActionRequest body, WorkOrderService service, CancellationToken token) => Results.Ok(Map(await service.ActAsync(id, action, body.Reason, token))));
+        group.MapPost("/{id:guid}/{action}", async (Guid id, string action, WorkOrderActionRequest body, WorkOrderService service, CancellationToken token) => Results.Ok(Map(await service.ActAsync(id, action, body.Reason, body.ExpectedVersion, token))));
         group.MapGet("/", async (WorkOrderService service, CancellationToken token) => Results.Ok((await service.ListAsync(token)).Select(Map)));
         group.MapPost("/{id:guid}/comments", async (Guid id, AddCommentRequest body, WorkOrderHistoryService service, CancellationToken token) => Results.Ok(await service.CommentAsync(id, body.Author, body.Body, token)));
         group.MapGet("/{id:guid}/timeline", async (Guid id, WorkOrderHistoryService service, CancellationToken token) => Results.Ok(await service.TimelineAsync(id, token)));
         return endpoints;
     }
-    private static WorkOrderResponse Map(WorkOrder x) => new(x.Id, x.RequestId, x.Title, x.Priority.ToString(), x.Status.ToString(), x.BlockedReason, x.CompletedAt);
+    private static WorkOrderResponse Map(WorkOrder x) => new(x.Id, x.RequestId, x.Title, x.Priority.ToString(), x.Status.ToString(), x.BlockedReason, x.CompletedAt, x.Version);
 }

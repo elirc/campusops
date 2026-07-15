@@ -17,9 +17,9 @@ public sealed class Part
     private static void Positive(int quantity) { if (quantity <= 0) throw new DomainException("part.quantity_invalid", "Quantity must be positive."); }
 }
 public sealed record PartReservation(Guid Id, Guid WorkOrderId, Guid PartId, int Quantity, DateTimeOffset ReservedAt);
-public interface IPartStore { Task AddAsync(Part part, CancellationToken token); Task<Part?> GetAsync(Guid id, CancellationToken token); Task<IReadOnlyCollection<Part>> ListAsync(CancellationToken token); }
+public interface IPartStore { Task AddAsync(Part part, CancellationToken token); Task<Part?> GetAsync(Guid id, CancellationToken token); Task<IReadOnlyCollection<Part>> ListAsync(CancellationToken token); Task<Part?> TryReserveAsync(Guid id, int quantity, CancellationToken token); }
 public interface IPartReservationStore { Task AddAsync(PartReservation reservation, CancellationToken token); Task<IReadOnlyCollection<PartReservation>> ListForWorkOrderAsync(Guid id, CancellationToken token); }
 public sealed class PartsService(IPartStore parts, IPartReservationStore reservations)
 {
-    public async Task<PartReservation> ReserveAsync(Guid workOrderId, Guid partId, int quantity, CancellationToken token) { var part = await parts.GetAsync(partId, token) ?? throw new DomainException("part.not_found", "Part was not found."); part.Reserve(quantity); var reservation = new PartReservation(Guid.NewGuid(), workOrderId, part.Id, quantity, DateTimeOffset.UtcNow); await reservations.AddAsync(reservation, token); return reservation; }
+    public async Task<PartReservation> ReserveAsync(Guid workOrderId, Guid partId, int quantity, CancellationToken token) { var part = await parts.TryReserveAsync(partId, quantity, token) ?? throw new DomainException("part.stock_insufficient", "Part was not found or stock is insufficient."); var reservation = new PartReservation(Guid.NewGuid(), workOrderId, part.Id, quantity, DateTimeOffset.UtcNow); await reservations.AddAsync(reservation, token); return reservation; }
 }
