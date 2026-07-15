@@ -23,12 +23,14 @@ builder.Services.AddSingleton<ILocationStore, InMemoryLocationStore>();
 builder.Services.AddSingleton<IAssetStore, InMemoryAssetStore>();
 builder.Services.AddSingleton<IMaintenanceRequestStore, InMemoryMaintenanceRequestStore>();
 builder.Services.AddSingleton<IWorkOrderStore, InMemoryWorkOrderStore>();
+builder.Services.AddSingleton<IWorkOrderHistoryStore, InMemoryWorkOrderHistoryStore>();
 builder.Services.AddSingleton<ITechnicianStore, InMemoryTechnicianStore>();
 builder.Services.AddScoped<LocationService>();
 builder.Services.AddScoped<AssetService>();
 builder.Services.AddScoped<MaintenanceRequestService>();
 builder.Services.AddScoped<WorkOrderService>();
 builder.Services.AddScoped<AssignmentService>();
+builder.Services.AddScoped<WorkOrderHistoryService>();
 
 var app = builder.Build();
 app.UseExceptionHandler();
