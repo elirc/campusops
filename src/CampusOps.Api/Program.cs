@@ -4,6 +4,7 @@ using CampusOps.Api.Inventory;
 using CampusOps.Api.Locations;
 using CampusOps.Api.Procurement;
 using CampusOps.Api.Requests;
+using CampusOps.Api.Security;
 using CampusOps.Api.ServiceLevels;
 using CampusOps.Api.Technicians;
 using CampusOps.Api.WorkOrders;
@@ -24,11 +25,15 @@ using CampusOps.Infrastructure.Requests;
 using CampusOps.Infrastructure.ServiceLevels;
 using CampusOps.Infrastructure.Technicians;
 using CampusOps.Infrastructure.WorkOrders;
+using Microsoft.AspNetCore.Authentication;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<DomainExceptionHandler>();
+builder.Services.AddAuthentication(SecurityPolicies.Scheme).AddScheme<AuthenticationSchemeOptions, DemoAuthenticationHandler>(SecurityPolicies.Scheme, _ => { });
+builder.Services.AddAuthorization(options => { options.AddPolicy(SecurityPolicies.Operations, policy => policy.RequireRole("Dispatcher", "Manager")); options.AddPolicy(SecurityPolicies.Manager, policy => policy.RequireRole("Manager")); });
+builder.Services.AddSingleton<CampusAuthorizer>();
 builder.Services.AddSingleton<ILocationStore, InMemoryLocationStore>();
 builder.Services.AddSingleton<IAssetStore, InMemoryAssetStore>();
 builder.Services.AddSingleton<IMaintenanceRequestStore, InMemoryMaintenanceRequestStore>();
@@ -37,7 +42,7 @@ builder.Services.AddSingleton<IWorkOrderHistoryStore, InMemoryWorkOrderHistorySt
 builder.Services.AddSingleton<ITechnicianStore, InMemoryTechnicianStore>();
 builder.Services.AddSingleton<IPartStore, InMemoryPartStore>();
 builder.Services.AddSingleton<IPartReservationStore, InMemoryPartReservationStore>();
-builder.Services.AddSingleton<IClock, SystemClock>();
+builder.Services.AddSingleton<IClock, CampusOps.Core.Common.SystemClock>();
 builder.Services.AddSingleton<IServiceLevelStore, InMemoryServiceLevelStore>();
 builder.Services.AddSingleton<IVendorStore, InMemoryVendorStore>();
 builder.Services.AddSingleton<IPurchaseRequestStore, InMemoryPurchaseRequestStore>();
@@ -54,6 +59,8 @@ builder.Services.AddScoped(provider => new ProcurementService(provider.GetRequir
 
 var app = builder.Build();
 app.UseExceptionHandler();
+app.UseAuthentication();
+app.UseAuthorization();
 if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Testing")) app.MapOpenApi();
 app.MapGet("/health/live", () => Results.Ok(new { status = "healthy" }));
 app.MapLocationEndpoints();
