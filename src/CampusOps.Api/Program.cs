@@ -1,15 +1,18 @@
 using CampusOps.Api.Assets;
 using CampusOps.Api.Errors;
+using CampusOps.Api.Inventory;
 using CampusOps.Api.Locations;
 using CampusOps.Api.Requests;
 using CampusOps.Api.Technicians;
 using CampusOps.Api.WorkOrders;
 using CampusOps.Core.Assets;
+using CampusOps.Core.Inventory;
 using CampusOps.Core.Locations;
 using CampusOps.Core.Requests;
 using CampusOps.Core.Technicians;
 using CampusOps.Core.WorkOrders;
 using CampusOps.Infrastructure.Assets;
+using CampusOps.Infrastructure.Inventory;
 using CampusOps.Infrastructure.Locations;
 using CampusOps.Infrastructure.Requests;
 using CampusOps.Infrastructure.Technicians;
@@ -25,12 +28,15 @@ builder.Services.AddSingleton<IMaintenanceRequestStore, InMemoryMaintenanceReque
 builder.Services.AddSingleton<IWorkOrderStore, InMemoryWorkOrderStore>();
 builder.Services.AddSingleton<IWorkOrderHistoryStore, InMemoryWorkOrderHistoryStore>();
 builder.Services.AddSingleton<ITechnicianStore, InMemoryTechnicianStore>();
+builder.Services.AddSingleton<IPartStore, InMemoryPartStore>();
+builder.Services.AddSingleton<IPartReservationStore, InMemoryPartReservationStore>();
 builder.Services.AddScoped<LocationService>();
 builder.Services.AddScoped<AssetService>();
 builder.Services.AddScoped<MaintenanceRequestService>();
 builder.Services.AddScoped<WorkOrderService>();
 builder.Services.AddScoped<AssignmentService>();
 builder.Services.AddScoped<WorkOrderHistoryService>();
+builder.Services.AddScoped<PartsService>();
 
 var app = builder.Build();
 app.UseExceptionHandler();
@@ -41,6 +47,7 @@ app.MapAssetEndpoints();
 app.MapMaintenanceRequestEndpoints();
 app.MapWorkOrderEndpoints();
 app.MapTechnicianEndpoints();
+app.MapPartEndpoints();
 app.Run();
 
 public partial class Program;
