@@ -1,3 +1,5 @@
+using System.Security.Claims;
+using CampusOps.Api.Security;
 using CampusOps.Contracts.Locations;
 using CampusOps.Core.Locations;
 
@@ -8,11 +10,12 @@ public static class LocationEndpoints
     public static IEndpointRouteBuilder MapLocationEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/v1/locations").WithTags("Locations");
-        group.MapPost("/", async (CreateLocationRequest request, LocationService service, CancellationToken token) =>
+        group.MapPost("/", async (CreateLocationRequest request, ClaimsPrincipal user, CampusAuthorizer authorizer, LocationService service, CancellationToken token) =>
         {
+            authorizer.EnsureAccess(user, request.Campus);
             var location = await service.CreateAsync(request.Campus, request.Building, request.Room, token);
             return Results.Created($"/api/v1/locations/{location.Id}", Map(location));
-        });
+        }).RequireAuthorization(SecurityPolicies.Manager);
         group.MapGet("/", async (LocationService service, CancellationToken token) =>
             Results.Ok((await service.ListAsync(token)).Select(Map)));
         group.MapGet("/{id:guid}", async (Guid id, LocationService service, CancellationToken token) =>

@@ -9,8 +9,7 @@ namespace CampusOps.Api.Tests.Locations;
 public sealed class LocationApiTests : IClassFixture<WebApplicationFactory<Program>>
 {
     private readonly HttpClient _client;
-    public LocationApiTests(WebApplicationFactory<Program> factory) =>
-        _client = factory.WithWebHostBuilder(builder => builder.UseEnvironment("Testing")).CreateClient();
+    public LocationApiTests(WebApplicationFactory<Program> factory) { _client = factory.WithWebHostBuilder(builder => builder.UseEnvironment("Testing")).CreateClient(); _client.DefaultRequestHeaders.Add("X-Demo-Role", "Manager"); _client.DefaultRequestHeaders.Add("X-Demo-Campus", "North"); }
 
     [Fact]
     public async Task CreateThenGet_ReturnsLocationContract()
