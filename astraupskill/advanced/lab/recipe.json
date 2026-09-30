@@ -1,0 +1,45 @@
+{
+  "sources": [
+    "src/CampusOps.Core/Assets/Asset.cs",
+    "src/CampusOps.Core/Common/DomainException.cs",
+    "src/CampusOps.Core/Common/Time.cs",
+    "src/CampusOps.Core/Integrations/Webhooks.cs",
+    "src/CampusOps.Core/Inventory/Part.cs",
+    "src/CampusOps.Core/Locations/Location.cs",
+    "src/CampusOps.Core/PreventiveMaintenance/MaintenancePlan.cs",
+    "src/CampusOps.Core/Procurement/Procurement.cs",
+    "src/CampusOps.Core/Reporting/OperationsReportService.cs",
+    "src/CampusOps.Core/Requests/MaintenanceRequest.cs",
+    "src/CampusOps.Core/ServiceLevels/ServiceLevel.cs",
+    "src/CampusOps.Core/Technicians/Technician.cs",
+    "src/CampusOps.Core/WorkOrders/WorkOrder.cs",
+    "src/CampusOps.Core/WorkOrders/WorkOrderHistory.cs",
+    "src/CampusOps.Infrastructure/Inventory/InMemoryPartsStores.cs"
+  ],
+  "edits": [
+    {
+      "path": "src/CampusOps.Infrastructure/Inventory/InMemoryPartsStores.cs",
+      "before": "            token.ThrowIfCancellationRequested();\n            if (!_parts.TryAdd(part.Id, part.Snapshot()))\n                throw new DomainException(\"part.already_exists\", \"A part with this ID already exists.\");",
+      "after": "            _parts[part.Id] = part; // LAB DEFECT: aliases input, overwrites duplicates, ignores cancellation",
+      "purpose": "Remove add isolation, duplicate and cancellation guards"
+    },
+    {
+      "path": "src/CampusOps.Infrastructure/Inventory/InMemoryPartsStores.cs",
+      "before": "_parts.TryGetValue(id, out var part) ? part.Snapshot() : null",
+      "after": "_parts.TryGetValue(id, out var part) ? part : null",
+      "purpose": "Return mutable stored reference"
+    },
+    {
+      "path": "src/CampusOps.Infrastructure/Inventory/InMemoryPartsStores.cs",
+      "before": "_parts.Values.OrderBy(x => x.Sku).Select(x => x.Snapshot()).ToArray()",
+      "after": "_parts.Values.OrderBy(x => x.Sku).ToArray()",
+      "purpose": "Return live objects from list"
+    },
+    {
+      "path": "src/CampusOps.Core/Inventory/Part.cs",
+      "before": "        if (quantity > int.MaxValue - OnHand)\n            throw new DomainException(\"part.quantity_overflow\", \"Received quantity exceeds supported stock capacity.\");\n",
+      "after": "        // LAB DEFECT: unchecked arithmetic can wrap stock negative\n",
+      "purpose": "Remove receive capacity guard"
+    }
+  ]
+}

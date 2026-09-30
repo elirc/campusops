@@ -2,6 +2,8 @@
 
 CampusOps is a fifteen-sprint teaching repository for learning business-heavy C#/.NET API development and React/TypeScript integration through a university facilities platform.
 
+Start the detailed [inventory ownership and CRUD upskilling course](astraupskill/README.md) for source walkthroughs, worked repairs, tests, exercises, and review guidance.
+
 ## Architecture
 
 ```text
@@ -31,6 +33,8 @@ npm run build --prefix web/CampusOps.Web
 | 11–13 | Integration surfaces | procurement, authorization, React dashboard |
 | 14–15 | Engineering ownership | idempotency, concurrency, reporting, operations, release |
 
-Development OpenAPI is at `/openapi/v1.json`. Mutations use teaching-only `X-Demo-Role` and `X-Demo-Campus` headers. The API default is non-durable; `/health/ready` reports that fact.
+Development OpenAPI is at `/openapi/v1.json`. Protected operations use teaching-only `X-Demo-Role` and `X-Demo-Campus` headers; coverage varies by module. Inventory now requires the Operations policy. These caller-controlled headers are not production identity. The API default is non-durable; `/health/ready` reports that fact.
 
 Read [LEARNER-GUIDE.md](LEARNER-GUIDE.md), the [curriculum specification](docs/curriculum/SPEC.md), [TESTREADME.md](TESTREADME.md), and [OEReadMe.md](OEReadMe.md).
+
+The API launch profile and Vite development proxy both use port 5110. Inventory reservations commit stock and history together in one shared memory store; this is not durable or shared across processes. The React console reads work orders; the inventory editor is a documented course exercise.

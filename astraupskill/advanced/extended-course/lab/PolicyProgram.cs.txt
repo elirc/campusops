@@ -1,0 +1,102 @@
+using CampusOps.Core.Common;
+using CampusOps.Core.Integrations;
+using CampusOps.Core.PreventiveMaintenance;
+using CampusOps.Core.Procurement;
+using CampusOps.Core.Requests;
+using CampusOps.Core.ServiceLevels;
+using CampusOps.Infrastructure.Integrations;
+using CampusOps.Infrastructure.Requests;
+
+var cases = new (string Name, Func<Task> Run)[]
+{
+    ("OBSERVATION threshold equality auto-approves without quote-expiry validation", Threshold),
+    ("OBSERVATION backward SLA resume shortens deadline", BackwardResume),
+    ("OBSERVATION valid long plan fails generated-request summary validation", LongPlan),
+    ("OBSERVATION failed enqueue retains key and suppresses retry", BurnedKey)
+};
+var failures = 0;
+foreach (var test in cases)
+{
+    try { await test.Run(); Console.WriteLine("PASS " + test.Name); }
+    catch (Exception error)
+    {
+        failures++;
+        Console.WriteLine("FAIL " + test.Name + ": " + error.GetType().Name + " " + error.Message);
+    }
+}
+Console.WriteLine($"{cases.Length - failures} passed; {failures} failed");
+return failures == 0 ? 0 : 1;
+
+static DateTimeOffset Now() => new(2026, 1, 2, 10, 0, 0, TimeSpan.Zero);
+static void Check(bool condition, string message)
+{
+    if (!condition) throw new InvalidOperationException(message);
+}
+static Task Threshold()
+{
+    var quote = new VendorQuote(Guid.NewGuid(), Guid.NewGuid(), "LAB-QUOTE", 1000m, Now().AddDays(-1));
+    var request = new PurchaseRequest(Guid.NewGuid(), Guid.NewGuid(), quote, "Replace seal");
+    request.Submit(1000m);
+    Check(request.Status == PurchaseRequestStatus.Approved && request.ApprovedBy == "policy:auto",
+        "Expected current threshold-equality behavior");
+    return Task.CompletedTask;
+}
+static Task BackwardResume()
+{
+    var item = new WorkOrderServiceLevel(Guid.NewGuid(), Now().AddHours(1));
+    item.Pause(Now());
+    item.Resume(Now().AddMinutes(-30));
+    Check(item.DueAt == Now().AddMinutes(30) && !item.IsPaused, "Expected current signed-duration behavior");
+    return Task.CompletedTask;
+}
+static async Task LongPlan()
+{
+    var plan = new MaintenancePlan(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), new string('x', 120), 30, Now());
+    var plans = new SinglePlanStore(plan);
+    var requests = new InMemoryMaintenanceRequestStore();
+    try
+    {
+        await new PreventiveMaintenanceService(plans, requests, new FixedClock(Now())).GenerateDueAsync(default);
+        throw new InvalidOperationException("Expected projected summary rejection");
+    }
+    catch (DomainException error) { Check(error.Code == "request.summary_invalid", "Wrong rule"); }
+    Check(plan.NextDueAt == Now(), "Rejected projection advanced plan");
+    Check((await requests.ListAsync(default)).Count == 0, "Rejected projection inserted request");
+}
+static async Task BurnedKey()
+{
+    var store = new BeforeListFailure();
+    var publisher = new WebhookPublisher(store, new InMemoryIdempotencyStore(), new FixedClock(Now()));
+    try
+    {
+        await publisher.EnqueueAsync("lab-event", "work.completed", "{}", default);
+        throw new InvalidOperationException("Expected list failure after claim");
+    }
+    catch (InjectedFailure) { }
+    Check(store.ListAttempts == 1, "Wrong failure seam");
+    Check(await publisher.EnqueueAsync("lab-event", "work.completed", "{}", default) == 0,
+        "Expected current retained-key suppression");
+    Check(store.ListAttempts == 1, "Retry unexpectedly reached listing");
+    Check((await store.ListDeliveriesAsync(default)).Count == 0, "Unexpected delivery");
+}
+sealed record FixedClock(DateTimeOffset UtcNow) : IClock;
+sealed class InjectedFailure : Exception;
+sealed class SinglePlanStore(MaintenancePlan plan) : IMaintenancePlanStore
+{
+    public Task AddAsync(MaintenancePlan item, CancellationToken token) => throw new NotSupportedException();
+    public Task<IReadOnlyCollection<MaintenancePlan>> ListAsync(CancellationToken token) =>
+        Task.FromResult<IReadOnlyCollection<MaintenancePlan>>(new[] { plan });
+}
+sealed class BeforeListFailure : IWebhookStore
+{
+    private readonly InMemoryWebhookStore inner = new();
+    public int ListAttempts { get; private set; }
+    public Task AddSubscriptionAsync(WebhookSubscription item, CancellationToken token) => inner.AddSubscriptionAsync(item, token);
+    public Task<IReadOnlyCollection<WebhookSubscription>> ListSubscriptionsAsync(string type, CancellationToken token)
+    {
+        ListAttempts++;
+        throw new InjectedFailure();
+    }
+    public Task AddDeliveryAsync(WebhookDelivery item, CancellationToken token) => inner.AddDeliveryAsync(item, token);
+    public Task<IReadOnlyCollection<WebhookDelivery>> ListDeliveriesAsync(CancellationToken token) => inner.ListDeliveriesAsync(token);
+}

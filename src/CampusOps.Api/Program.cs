@@ -45,8 +45,9 @@ builder.Services.AddSingleton<IMaintenanceRequestStore, InMemoryMaintenanceReque
 builder.Services.AddSingleton<IWorkOrderStore, InMemoryWorkOrderStore>();
 builder.Services.AddSingleton<IWorkOrderHistoryStore, InMemoryWorkOrderHistoryStore>();
 builder.Services.AddSingleton<ITechnicianStore, InMemoryTechnicianStore>();
-builder.Services.AddSingleton<IPartStore, InMemoryPartStore>();
-builder.Services.AddSingleton<IPartReservationStore, InMemoryPartReservationStore>();
+builder.Services.AddSingleton<InMemoryPartStore>();
+builder.Services.AddSingleton<IPartStore>(provider => provider.GetRequiredService<InMemoryPartStore>());
+builder.Services.AddSingleton<IPartReservationStore>(provider => provider.GetRequiredService<InMemoryPartStore>());
 builder.Services.AddSingleton<IClock, CampusOps.Core.Common.SystemClock>();
 builder.Services.AddSingleton<IServiceLevelStore, InMemoryServiceLevelStore>();
 builder.Services.AddSingleton<IVendorStore, InMemoryVendorStore>();

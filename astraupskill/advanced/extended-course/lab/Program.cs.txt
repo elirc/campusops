@@ -1,0 +1,167 @@
+using CampusOps.Core.Common;
+using CampusOps.Core.Inventory;
+using CampusOps.Core.Requests;
+using CampusOps.Core.Technicians;
+using CampusOps.Core.WorkOrders;
+using CampusOps.Infrastructure.Inventory;
+using CampusOps.Infrastructure.Requests;
+using CampusOps.Infrastructure.WorkOrders;
+
+var cases = new (string Name, Func<Task> Run)[]
+{
+    ("OBSERVATION repeated reservation fields create distinct additive allocations", RepeatedReservation),
+    ("CONTRACT cancellation before call rejects; cancellation after success preserves result", CancellationBoundary),
+    ("OBSERVATION failed conversion insertion leaves request Converted", ConversionFailure),
+    ("OBSERVATION successful version checks do not reserve later mutation authority", VersionChecks),
+    ("OBSERVATION Skills exposes a mutable runtime collection", SkillOwnership),
+    ("OBSERVATION failed audit append leaves the comment recorded", CommentFailure)
+};
+var failures = 0;
+foreach (var test in cases)
+{
+    try { await test.Run(); Console.WriteLine("PASS " + test.Name); }
+    catch (Exception error)
+    {
+        failures++;
+        Console.WriteLine("FAIL " + test.Name + ": " + error.GetType().Name + " " + error.Message);
+    }
+}
+Console.WriteLine($"{cases.Length - failures} passed; {failures} failed");
+return failures == 0 ? 0 : 1;
+
+static void Check(bool condition, string message)
+{
+    if (!condition) throw new InvalidOperationException(message);
+}
+
+static DateTimeOffset Now() => new(2026, 1, 2, 10, 0, 0, TimeSpan.Zero);
+
+static WorkOrder Order() => new(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), null,
+    RequestPriority.Normal, "Inspect pump", Now());
+
+static async Task RepeatedReservation()
+{
+    var store = new InMemoryPartStore();
+    var part = new Part(Guid.NewGuid(), "FILTER", "Filter", 10);
+    var order = Guid.NewGuid();
+    await store.AddAsync(part, default);
+    var first = await store.ReserveForWorkOrderAsync(order, part.Id, 2, Now(), default);
+    var second = await store.ReserveForWorkOrderAsync(order, part.Id, 2, Now(), default);
+    Check(first is not null && second is not null && first.Id != second.Id, "Expected distinct accepted allocations");
+    var stored = await store.GetAsync(part.Id, default);
+    Check(stored!.Reserved == 4 && stored.Available == 6, "Wrong additive stock result");
+    Check((await store.ListForWorkOrderAsync(order, default)).Count == 2, "Expected two history records");
+}
+
+static async Task CancellationBoundary()
+{
+    var store = new InMemoryPartStore();
+    var part = new Part(Guid.NewGuid(), "VALVE", "Valve", 5);
+    var order = Guid.NewGuid();
+    await store.AddAsync(part, default);
+    using var before = new CancellationTokenSource();
+    before.Cancel();
+    try
+    {
+        await store.ReserveForWorkOrderAsync(order, part.Id, 2, Now(), before.Token);
+        throw new InvalidOperationException("Expected cancellation before commit");
+    }
+    catch (OperationCanceledException) { }
+    Check((await store.GetAsync(part.Id, default))!.Reserved == 0, "Canceled call changed stock");
+    Check((await store.ListForWorkOrderAsync(order, default)).Count == 0, "Canceled call added history");
+    using var after = new CancellationTokenSource();
+    var result = await store.ReserveForWorkOrderAsync(order, part.Id, 2, Now(), after.Token);
+    after.Cancel(); // Explicit public-boundary schedule, not an internal timing claim.
+    Check(result is not null && after.IsCancellationRequested, "Expected completed command plus later canceled token");
+    Check((await store.GetAsync(part.Id, default))!.Reserved == 2, "Later cancellation changed committed stock");
+    Check((await store.ListForWorkOrderAsync(order, default)).Count == 1, "Completed command lost history");
+}
+
+static async Task ConversionFailure()
+{
+    var requests = new InMemoryMaintenanceRequestStore();
+    var request = new MaintenanceRequest(Guid.NewGuid(), Guid.NewGuid(), null,
+        "Leak", "Pipe needs inspection", Now());
+    request.Triage(RequestPriority.High);
+    await requests.AddAsync(request, default);
+    var orders = new BeforeOrderAddFailure();
+    try
+    {
+        await new WorkOrderService(orders, requests).ConvertAsync(request.Id, default);
+        throw new InvalidOperationException("Expected designated order-add failure");
+    }
+    catch (InjectedFailure) { }
+    Check(orders.AddAttempts == 1, "Wrong failure seam");
+    Check((await requests.GetAsync(request.Id, default))!.Status == RequestStatus.Converted,
+        "Expected current request mutation before failed insertion");
+    Check((await orders.ListAsync(default)).Count == 0, "Unexpected stored order");
+}
+
+static Task VersionChecks()
+{
+    var order = Order();
+    order.Assign(Guid.NewGuid());
+    order.EnsureVersion(1); // Actor A's observation.
+    order.EnsureVersion(1); // Actor B's observation before either mutation.
+    order.Start();
+    order.Cancel();
+    Check(order.Status == WorkOrderStatus.Cancelled && order.Version == 3,
+        "Expected separate checks to permit this domain interleaving");
+    return Task.CompletedTask;
+}
+
+static Task SkillOwnership()
+{
+    var technician = new Technician(Guid.NewGuid(), "Lab technician", new[] { "HVAC" });
+    Check(!technician.HasSkill("ELECTRICAL"), "Invalid fixture");
+    Check(technician.Skills is HashSet<string>, "Current runtime collection exposure changed");
+    ((HashSet<string>)technician.Skills).Add("ELECTRICAL");
+    Check(technician.HasSkill("electrical"), "Expected exposed-set mutation to affect skill checks");
+    return Task.CompletedTask;
+}
+
+static async Task CommentFailure()
+{
+    var orders = new InMemoryWorkOrderStore();
+    var history = new BeforeEventFailure();
+    var order = Order();
+    await orders.AddAsync(order, default);
+    try
+    {
+        await new WorkOrderHistoryService(orders, history).CommentAsync(order.Id, "Lab author", "Access arranged", default);
+        throw new InvalidOperationException("Expected designated audit failure");
+    }
+    catch (InjectedFailure) { }
+    Check(history.EventAttempts == 1, "Wrong event failure seam");
+    Check((await history.ListCommentsAsync(order.Id, default)).Count == 1, "Expected prior comment append");
+    Check((await history.ListEventsAsync(order.Id, default)).Count == 0, "Unexpected audit event");
+}
+
+sealed class InjectedFailure : Exception;
+
+sealed class BeforeOrderAddFailure : IWorkOrderStore
+{
+    private readonly InMemoryWorkOrderStore inner = new();
+    public int AddAttempts { get; private set; }
+    public Task AddAsync(WorkOrder order, CancellationToken token)
+    {
+        AddAttempts++;
+        throw new InjectedFailure();
+    }
+    public Task<WorkOrder?> GetAsync(Guid id, CancellationToken token) => inner.GetAsync(id, token);
+    public Task<IReadOnlyCollection<WorkOrder>> ListAsync(CancellationToken token) => inner.ListAsync(token);
+}
+
+sealed class BeforeEventFailure : IWorkOrderHistoryStore
+{
+    private readonly InMemoryWorkOrderHistoryStore inner = new();
+    public int EventAttempts { get; private set; }
+    public Task AppendCommentAsync(WorkOrderComment comment, CancellationToken token) => inner.AppendCommentAsync(comment, token);
+    public Task AppendEventAsync(AuditEvent auditEvent, CancellationToken token)
+    {
+        EventAttempts++;
+        throw new InjectedFailure();
+    }
+    public Task<IReadOnlyCollection<WorkOrderComment>> ListCommentsAsync(Guid id, CancellationToken token) => inner.ListCommentsAsync(id, token);
+    public Task<IReadOnlyCollection<AuditEvent>> ListEventsAsync(Guid id, CancellationToken token) => inner.ListEventsAsync(id, token);
+}

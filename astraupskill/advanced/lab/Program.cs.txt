@@ -1,0 +1,63 @@
+using CampusOps.Core.Common;
+using CampusOps.Core.Inventory;
+using CampusOps.Infrastructure.Inventory;
+var tests = new (string,Func<Task>)[] {
+    ("input object is detached", InputIsolation),
+    ("get and list objects are detached", ReadIsolation),
+    ("duplicate identity cannot replace stock", Duplicate),
+    ("cancelled add stores nothing", CancelledAdd),
+    ("receive overflow leaves stock unchanged", Overflow),
+    ("concurrent reservations reconcile stock and history", Competition),
+    ("cancelled reservation changes neither collection", CancelledReservation)
+};
+var failed=0;
+foreach(var (name,run) in tests) {
+    try { await run(); Console.WriteLine("PASS "+name); }
+    catch(Exception ex) { failed++; Console.WriteLine("FAIL "+name+": "+ex.Message); }
+}
+Console.WriteLine($"{tests.Length-failed} passed; {failed} failed");
+return failed==0 ? 0 : 1;
+static void Check(bool condition,string message) { if(!condition) throw new Exception(message); }
+static Part NewPart(int count=3) => new(Guid.NewGuid(),"LAB-FILTER","Filter",count);
+static async Task<(InMemoryPartStore,Part)> Setup() { var store=new InMemoryPartStore();var part=NewPart();await store.AddAsync(part,default);return (store,part); }
+static async Task InputIsolation() {
+    var (store,part)=await Setup();part.Reserve(1);
+    Check((await store.GetAsync(part.Id,default))!.Reserved==0,"caller changed stored state");
+}
+static async Task ReadIsolation() {
+    var (store,part)=await Setup();(await store.GetAsync(part.Id,default))!.Reserve(1);
+    (await store.ListAsync(default)).Single().Receive(2);
+    var stored=(await store.GetAsync(part.Id,default))!;
+    Check(stored.Reserved==0 && stored.OnHand==3,"read leaked mutable reference");
+}
+static async Task Duplicate() {
+    var (store,part)=await Setup();bool rejected=false;
+    try { await store.AddAsync(new Part(part.Id,"REPLACEMENT","Other",99),default); }
+    catch(DomainException ex) { Check(ex.Code=="part.already_exists","wrong duplicate code");rejected=true; }
+    Check(rejected && (await store.GetAsync(part.Id,default))!.OnHand==3,"duplicate overwrote inventory");
+}
+static async Task CancelledAdd() {
+    var store=new InMemoryPartStore();var part=NewPart();using var cts=new CancellationTokenSource();cts.Cancel();bool rejected=false;
+    try {await store.AddAsync(part,cts.Token);} catch(OperationCanceledException){rejected=true;}
+    Check(rejected && (await store.GetAsync(part.Id,default)) is null,"cancelled add wrote stock");
+}
+static Task Overflow() {
+    var part=NewPart(int.MaxValue);bool rejected=false;
+    try {part.Receive(1);} catch(DomainException ex){Check(ex.Code=="part.quantity_overflow","wrong overflow code");rejected=true;}
+    Check(rejected && part.OnHand==int.MaxValue && part.Reserved==0,"overflow corrupted quantities");return Task.CompletedTask;
+}
+static async Task Competition() {
+    var (store,part)=await Setup();var order=Guid.NewGuid();var at=DateTimeOffset.Parse("2026-03-02T12:00:00Z");
+    var start=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var tasks=Enumerable.Range(0,16).Select(_=>Task.Run(async()=>{await start.Task;return await store.ReserveForWorkOrderAsync(order,part.Id,1,at,default);})).ToArray();
+    start.SetResult();var results=await Task.WhenAll(tasks).WaitAsync(TimeSpan.FromSeconds(5));
+    var state=(await store.GetAsync(part.Id,default))!;var history=await store.ListForWorkOrderAsync(order,default);
+    Check(results.Count(x=>x is not null)==3 && history.Count==3 && state.Available==0,"wrong winner count");
+    Check(history.Sum(x=>x.Quantity)==state.Reserved && history.Select(x=>x.Id).Distinct().Count()==3,"stock/history mismatch");
+    Check(history.All(x=>x.ReservedAt==at),"clock capture mismatch");
+}
+static async Task CancelledReservation() {
+    var (store,part)=await Setup();var order=Guid.NewGuid();using var cts=new CancellationTokenSource();cts.Cancel();bool rejected=false;
+    try{await store.ReserveForWorkOrderAsync(order,part.Id,1,DateTimeOffset.UtcNow,cts.Token);}catch(OperationCanceledException){rejected=true;}
+    Check(rejected && (await store.GetAsync(part.Id,default))!.Reserved==0 && (await store.ListForWorkOrderAsync(order,default)).Count==0,"cancellation changed state");
+}
